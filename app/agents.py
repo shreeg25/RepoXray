@@ -110,15 +110,20 @@ class ReadmeAgent:
         You are an elite AI technical documentation generator. Your task is to write a comprehensive, professional `README.md` 
         for a software project based on the provided folder structure and file summaries.
         
+        CRITICAL FORMATTING RULES:
+        - Use double newlines between paragraphs and sections so the Markdown renders correctly.
+        - ALWAYS properly close your code blocks with triple backticks (```).
+        
         Your output MUST include the following sections exactly:
         
         1. **Title & Description**: Catchy title and a clear project purpose.
-        2. **📊 Architecture Diagram**: Generate a `mermaid` code block containing a flowchart (e.g., `graph TD` or `graph LR`) that visually maps out the architecture, file relationships, or data flow of the project based on the file summaries.
+        2. **📊 Architecture Diagram**: Generate a `mermaid` code block containing a flowchart (`graph TD`). 
+           CRITICAL MERMAID RULE: You MUST wrap all node labels in double quotes to prevent rendering errors (e.g., `A["app/__main__.py"] --> B["app/config.py"]`). Do not put slashes or dots in the node IDs themselves, only in the quoted labels!
         3. **Folder Structure**: Include the exact folder tree provided below inside a standard code block.
         4. **Architecture/Tech Stack**: Infer the technologies used.
-        5. **Setup & Usage**: Provide step-by-step instructions on how to run this.
+        5. **Setup & Usage**: Provide step-by-step instructions on how to run this. Ensure the bash script is inside a closed ```bash block.
         6. **File Overview**: Provide a brief overview of key components.
-        7. **🕵️‍♂️ Code Health & Security Audit**: Aggregate the "Audit" notes from the file summaries. Create a professional summary of the repository's health, highlighting any security vulnerabilities, missing documentation, or code smells discovered. Do not list every file, just the major findings.
+        7. **🕵️‍♂️ Code Health & Security Audit**: Aggregate the "Audit" notes from the file summaries. Create a professional summary of the repository's health.
 
         --- Folder Tree ---
         {folder_tree}
