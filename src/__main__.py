@@ -1,6 +1,6 @@
 import sys
 import os
-from app.agents import ReadmeAgent
+from src.agents import ReadmeAgent
 
 def main():
     print("🚀 Initializing Epoch X Nasiko README Agent...")

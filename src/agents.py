@@ -4,8 +4,8 @@ import concurrent.futures
 from google import genai
 from google.genai import types, errors
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type, RetryError
-from app.tools import ProjectReader
-from app.config import Config
+from src.tools import ProjectReader
+from src.config import Config
 
 class ReadmeAgent:
     def __init__(self, target_dir: str):
