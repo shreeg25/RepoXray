@@ -30,7 +30,7 @@ Unlike standard AI prompt wrappers, RepoXray is specifically engineered to handl
 Clone the repository and install the required dependencies:
 
 ```bash
-git clone [https://github.com/yourusername/repoxray.git](https://github.com/yourusername/repoxray.git)
+git clone [https://github.com/yourusername/RepoXray.git](https://github.com/yourusername/RepoXray.git)
 cd repoxray
 pip install -r requirements.txt
 ```
