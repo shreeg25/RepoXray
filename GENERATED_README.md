@@ -1,19 +1,23 @@
-# RepoXray: AI-Powered Project Documentation Generator
+# RepoXray: AI-Powered README Generation & Code Audit
 
-RepoXray is an advanced AI agent designed to automatically generate comprehensive `README.md` files for software projects. Leveraging Google's Gemini models, it employs a sophisticated Map-Reduce strategy to analyze codebase structure, summarize individual files, infer technologies, provide setup instructions, and audit code health and security. The goal is to produce high-quality, up-to-date documentation with minimal human intervention.
+RepoXray is an innovative AI orchestrator designed to revolutionize software project documentation. Leveraging Google's Gemini models and a sophisticated Map-Reduce architecture, it automatically generates comprehensive, professional `README.md` files from any codebase. Beyond basic project summarization, RepoXray performs an integrated code health and security audit, identifying potential vulnerabilities, code smells, and documentation gaps, providing developers with both detailed project insights and a ready-to-use `README.md`.
 
 ## 📊 Architecture Diagram
 
 ```mermaid
 graph TD
-    A[User/CLI app/__main__.py] --> B(Load Configuration app/config.py);
-    B --> C(Load .env);
-    C -- GOOGLE_API_KEY --> D(Initialize ReadmeAgent app/agents.py);
-    D --> E(ProjectReader app/tools.py);
-    E -- Read Project Files & Folder Tree --> D;
-    D -- Concurrently Process Files (Map Phase) --> F(Google GenAI - Gemini Model);
-    F -- File Summaries & Audits --> D;
-    D -- Aggregate & Generate README (Reduce Phase) --> G[Output README.md];
+    A["app/__main__.py"] --> B["app/agents.py :: ReadmeAgent"]
+    B --> C["app/config.py :: Config"]
+    C --> E[".env"]
+    B --> D["app/tools.py :: ProjectReader"]
+    B --> H["Google Gemini API"]
+    D --> |Scans files| X["Project Files"]
+    B -- "Generates" --> G["GENERATED_README.md"]
+
+    F["requirements.txt"] --> |Dependencies for| A
+    F --> |Dependencies for| B
+    F --> |Dependencies for| C
+    F --> |Dependencies for| D
 ```
 
 ## Folder Structure
@@ -21,6 +25,7 @@ graph TD
 ```
 📁 RepoXray/
     📄 .env
+    📄 GENERATED_README.md
     📄 README.md
     📄 requirements.txt
     📁 app/
@@ -32,88 +37,122 @@ graph TD
 
 ## Architecture/Tech Stack
 
-RepoXray is built primarily with **Python 3**. Its core functionality relies on:
+RepoXray employs a robust architecture primarily built on Python, designed to handle extensive codebases by breaking down the documentation and auditing process into manageable, concurrent steps.
 
-*   **Google GenAI (Gemini Models)**: For natural language understanding, summarization, and content generation.
-*   **Map-Reduce Pattern**: To efficiently process multiple files concurrently (Map) and then synthesize information into a coherent README (Reduce).
-*   **`python-dotenv`**: For secure management and loading of environment variables, specifically API keys.
-*   **`tenacity`**: For robust retry logic when interacting with external APIs, enhancing reliability.
-*   **Concurrent Processing**: Utilizing Python's concurrency primitives (likely `concurrent.futures`) to speed up file analysis.
+*   **Core Language:** Python
+*   **AI Models:** Google Gemini (specifically `gemini-2.5-flash` for efficient processing) is used for both the "Map" phase (individual file summarization and initial audit) and the "Reduce" phase (synthesis of the final `README.md` and overall audit report).
+*   **Architecture Pattern:** A custom Map-Reduce pattern addresses Large Language Model (LLM) token limitations.
+    *   **Map Phase:** Individual project files are concurrently summarized and audited using the AI.
+    *   **Reduce Phase:** These summaries, along with the inferred project structure, are synthesized into a comprehensive `README.md`.
+*   **Dependency Management:** `pip` with `requirements.txt` ensures all necessary external libraries are installed.
+*   **Environment Configuration:** `python-dotenv` is utilized for secure management of sensitive API keys and other configuration variables via `.env` files.
+*   **API Resilience:** The `tenacity` library provides robust retry mechanisms with exponential backoff for AI API calls, enhancing stability against transient network issues or rate limits.
+*   **File System Interaction:** A dedicated `ProjectReader` (in `app/tools.py`) intelligently scans project directories, filters out irrelevant files based on common patterns and `.gitignore` rules, and extracts content for LLM processing.
+*   **Concurrency:** `ThreadPoolExecutor` is implicitly used (or implied by the design for parallel processing of files) to speed up the Map phase.
 
 ## Setup & Usage
 
-To get RepoXray up and running, follow these steps:
+Follow these steps to set up and run RepoXray.
 
 ### Prerequisites
 
-*   **Python 3.8+**
-*   A **Google API Key** for accessing Gemini models.
+*   Python 3.8+
+*   A Google API Key with access to Gemini models.
 
 ### Installation
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-repo/RepoXray.git
+    git clone https://github.com/your-username/RepoXray.git
     cd RepoXray
     ```
-2.  **Create a `.env` file:**
-    In the root directory of the project (e.g., `RepoXray/.env`), create a file named `.env` and add your Google API Key:
-    ```env
-    GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY_HERE"
+
+2.  **Create and activate a virtual environment (recommended):**
+    ```bash
+    python -m venv .venv
+    # On Windows
+    .venv\Scripts\activate
+    # On macOS/Linux
+    source .venv/bin/activate
     ```
-    **Important**: Ensure this file is excluded from version control (`.gitignore`) to prevent credential exposure.
+
 3.  **Install dependencies:**
     ```bash
     pip install -r requirements.txt
     ```
 
-### Usage
+### Configuration
 
-Run the `__main__.py` script from the `app` directory. You can specify a target directory, or it will default to the current working directory.
+1.  **Create a `.env` file:** In the root directory of the `RepoXray` project (next to `requirements.txt`), create a file named `.env`.
 
-```bash
-# Generate README for the current directory
-python app
+2.  **Add your Google API Key:** Open the `.env` file and add your Google API Key as follows, replacing `YOUR_GOOGLE_API_KEY` with your actual key:
+    ```
+    GOOGLE_API_KEY=YOUR_GOOGLE_API_KEY
+    ```
 
-# Generate README for a specific project directory
-python app /path/to/your/project
-```
+### Running RepoXray
 
-The generated `README.md` will be placed in the current working directory from which you execute the script (or the specified target directory if applicable).
+To generate a `README.md` for a project, navigate to the `RepoXray` root directory and run the application.
+
+*   **To scan the current directory:**
+    ```bash
+    python -m app
+    ```
+
+*   **To scan a specific project directory:**
+    ```bash
+    python -m app --dir /path/to/your/project
+    ```
+    Replace `/path/to/your/project` with the absolute or relative path to the project you wish to document.
+
+Upon successful completion, a file named `GENERATED_README.md` will be created in the `RepoXray` project's root directory (or the specified `--dir` if output is directed there, though currently it's hardcoded to the execution directory).
 
 ## File Overview
 
-*   **`.env`**: Stores environment-specific variables, primarily the `GOOGLE_API_KEY`.
-*   **`requirements.txt`**: Lists all Python package dependencies required for the project.
-*   **`app/config.py`**: Centralized configuration management. Loads environment variables and provides structured access to settings like `GOOGLE_API_KEY` and AI model names. Includes validation for critical variables.
-*   **`app/tools.py`**: Defines the `ProjectReader` class. This utility navigates the project directory, generates folder structures, and reads file contents, intelligently filtering out irrelevant files based on common patterns and `.gitignore` rules.
-*   **`app/agents.py`**: Contains the core `ReadmeAgent` class. This orchestrates the entire README generation process using a Map-Reduce strategy, leveraging Google GenAI to summarize files, perform audits, and synthesize the final `README.md`.
-*   **`app/__main__.py`**: The main entry point of the application. It parses command-line arguments, initializes the `ReadmeAgent`, and triggers the README generation process, including basic error handling.
+*   **`.env`**: This file stores environment variables crucial for the application, primarily the `GOOGLE_API_KEY`. It ensures sensitive credentials are not hardcoded.
+
+*   **`requirements.txt`**: Lists all external Python packages required for the project, ensuring a consistent development and deployment environment.
+
+*   **`app/__main__.py`**: The main entry point of the application. It handles command-line argument parsing (e.g., specifying the target directory) and orchestrates the execution of the `ReadmeAgent`.
+
+*   **`app/agents.py`**: Defines the `ReadmeAgent` class, which is the core intelligence of RepoXray. It manages the Map-Reduce process, interacting with the LLM to summarize individual files, perform audits, and synthesize the final `README.md`.
+
+*   **`app/config.py`**: Centralizes application settings. It loads environment variables from `.env` and defines configuration parameters for AI models and API keys, including validation logic for essential variables.
+
+*   **`app/tools.py`**: Contains the `ProjectReader` utility class. This class is responsible for scanning the project directory, reading file contents, generating a folder structure representation, and applying `.gitignore`-like filtering rules to optimize LLM token usage.
 
 ## 🕵️‍♂️ Code Health & Security Audit
 
-This audit aggregates findings across the RepoXray repository, highlighting key areas for improvement in security, code quality, and documentation.
+This section aggregates findings from the internal audits performed on the RepoXray codebase itself, providing a transparent overview of its current state regarding security, quality, and potential limitations.
 
-### Security Findings
+### Security Flaws
 
-The most critical security finding relates to the **`GOOGLE_API_KEY`** stored in the `.env` file. While `app/config.py` correctly loads this as an environment variable, the `.env` file itself, containing a live API key, represents a significant **credential exposure risk** if committed to a public repository or improperly handled in deployment. It is paramount to ensure `.env` is always excluded from version control via `.gitignore` and handled securely in CI/CD pipelines. Additionally, `app/tools.py` (specifically the `ProjectReader`'s `root_dir` input) requires external validation by the calling application (`app/__main__.py`) to prevent potential **path traversal vulnerabilities** if arbitrary or untrusted paths were ever accepted.
+1.  **Credential Exposure Risk (.env):** The primary security concern remains the `GOOGLE_API_KEY` stored in `.env`. While appropriate for local development, there's a significant risk of accidental commitment to version control. For production deployments, more robust secret management solutions (e.g., cloud-specific secret managers, environment variables managed by orchestrators) are imperative.
+2.  **Path Traversal Vulnerability (Potential):** A theoretical path traversal vulnerability exists in `app/tools.py`'s `ProjectReader` if the `root_dir` input is not strictly validated against untrusted user-supplied paths. Although the current `__main__.py` parses a local directory, this aspect is critical for any future expansion involving external inputs.
+3.  **False Sense of Security (Audit Feature):** The "Integrated Security & Health Audit" feature, while a valuable goal, lacks detailed methodology. Using a fast LLM like `gemini-2.5-flash` for critical audit synthesis may optimize for speed/cost but raises questions about the depth and accuracy of vulnerability detection or hardcoded secret identification. This could inadvertently lead to a false sense of security for users if actual critical flaws are missed.
 
-### Code Quality & Maintainability
+### Code Smells & Quality Issues
 
-1.  **Missing Docstrings**: There is a pervasive lack of docstrings throughout the project. Specifically, all methods in `app/tools.py`, the `ReadmeAgent` class and its `__init__` method in `app/agents.py`, and the `main` function in `app/__main__.py` are missing comprehensive docstrings. This significantly hinders code readability, maintainability, and onboarding for new developers.
-2.  **Inconsistent Logging**: The project extensively uses `print()` statements for progress updates, warnings, and errors across `app/tools.py`, `app/agents.py`, and `app/__main__.py`. This is a code smell. A more robust and configurable approach would be to adopt Python's standard `logging` module, allowing for flexible log levels, handlers, and structured output suitable for production environments. Error messages in `app/__main__.py` are printed to `sys.stdout` instead of the more appropriate `sys.stderr`.
-3.  **Hardcoding and Magic Numbers**:
-    *   `app/tools.py` includes hardcoded `ignore_dirs` and `ignore_extensions`, limiting flexibility for customization. These should ideally be configurable.
-    *   `app/agents.py` contains several "magic numbers" (e.g., `15000` for content truncation, `3` for `time.sleep`, `max_workers`, `tenacity` parameters). These values should be externalized as named constants or configuration variables for improved readability and easier modification.
-4.  **Embedded Prompts**: While functional, the long prompt templates within `app/agents.py` are embedded directly in methods. For more complex or frequently changing prompts, externalizing them into separate files or a dedicated prompt management module would enhance organization and maintainability.
-5.  **Design Inconsistency (README Template)**: The existing `README.md` file in the repository (serving as a template) is entirely written in HTML despite its `.md` extension. This deviates from standard Markdown conventions and can lead to inconsistent rendering on platforms like GitHub or GitLab, diminishing readability and platform integration.
+1.  **Missing Docstrings:** A pervasive lack of comprehensive docstrings affects several key components:
+    *   `ReadmeAgent` class (`app/agents.py`)
+    *   `main()` function (`app/__main__.py`)
+    *   `validate` method in `Config` (`app/config.py`)
+    *   Private helper methods (`_load_gitignore`, `_is_ignored`) in `app/tools.py`
+    This omission significantly hinders maintainability and understandability for new contributors.
+2.  **Inconsistent Logging:** The extensive use of `print()` statements, especially within `app/tools.py`'s `ProjectReader`, is a code smell. It tightly couples logic with direct console output. Adopting Python's standard `logging` module would provide a more robust, configurable, and scalable approach to error and progress reporting.
+3.  **Hardcoding & Magic Numbers:** Several instances of hardcoded values limit flexibility and readability:
+    *   **Crude Rate Limiting:** `time.sleep(3)` in `_process_single_file` (`app/agents.py`) is an inefficient and blunt rate-limiting mechanism. It introduces a fixed delay per file regardless of actual API usage, drastically slowing down processing for larger projects.
+    *   **Content Truncation Limit:** The `15000` character limit for LLM input in `_summarize_file` (`app/agents.py`) is hardcoded. Ideally, this should be configurable or, more advanced, token-aware.
+    *   **Output Filename:** `GENERATED_README.md` is hardcoded as the output filename in `app/agents.py`.
+    *   **Ignored Patterns:** `ignore_dirs` and `ignore_extensions` in `app/tools.py` are hardcoded lists.
+    *   **Indentation:** A fixed numerical indentation (`4`) in `generate_folder_tree` (`app/tools.py`) is a minor "magic number."
+    *   **Concurrency Limit:** The `max_workers` (capped at 3) for the `ThreadPoolExecutor` (as identified in the `GENERATED_README.md` audit) is a hardcoded performance bottleneck.
+4.  **Embedded Prompts:** Long prompt templates are embedded directly within `app/agents.py`. Externalizing these into separate files or configuration would improve manageability and facilitate easier updates or experimentation.
+5.  **Design Inconsistency (README Template):** The project's internal `README.md` template is noted to use HTML despite its Markdown extension, leading to inconsistent rendering expectations.
 
-### Functional Limitations & Performance
+### Bugs & Functional Limitations
 
-1.  **Simplified `.gitignore` Parsing**: The `_is_ignored` method in `app/tools.py` uses `fnmatch` for `.gitignore` pattern matching, which is a simplification that does not fully replicate Git's complex `.gitignore` specification (e.g., it lacks support for negation, directory-only patterns, or relative paths). This could lead to incorrect file inclusions or exclusions in edge cases.
-2.  **Performance Bottlenecks**: `app/agents.py` exhibits potential performance limitations, particularly for larger projects. A rudimentary `time.sleep(3)` rate limiter per file (likely for the Gemini Free Tier) combined with a low `max_workers` (capped at 3) significantly slows down processing. A more sophisticated rate-limiting strategy or a higher-tier API plan would be essential for scalability.
-3.  **Content Truncation**: The hardcoded truncation of file content (`content[:15000]`) in `app/agents.py` due to LLM context window limits means that very large files might not be fully analyzed. This could result in incomplete summaries or audit reports for those specific files.
-
-### Summary
-
-RepoXray demonstrates a solid functional core for AI-driven README generation. However, addressing the identified security concerns, especially surrounding API key management, is paramount. Significant improvements in code quality, primarily through the addition of comprehensive docstrings, adoption of proper logging, and the refactoring of hardcoded values and embedded prompts, would greatly enhance the project's maintainability and long-term viability. Future work should also focus on refining the `.gitignore` parsing and optimizing the performance for larger codebases.
+1.  **Simplified `.gitignore` Parsing:** The `_is_ignored` method in `app/tools.py` uses `fnmatch`, which is a simplification of the full Git `.gitignore` specification. It does not correctly handle negative patterns (`!pattern`), comments (`#`), or fully differentiate between file-only and directory-only patterns. This can lead to minor discrepancies compared to actual Git behavior.
+2.  **Inefficient Performance (Rate Limiting & Concurrency):** The `time.sleep(3)` rate limiter and a low `max_workers` cap (3) in `app/agents.py` significantly impede performance, especially for projects with numerous files. A more dynamic or token-bucket-based approach would be far more efficient.
+3.  **Incomplete Content Analysis:** The hardcoded content truncation means very large files might not be fully analyzed by the LLM, potentially leading to incomplete or inaccurate summaries and audits for those specific files.
+4.  **Incomplete Configuration Validation:** While `GOOGLE_API_KEY` is validated in `app/config.py`, the `MAP_MODEL` and `REDUCE_MODEL` variables are not explicitly checked for their presence or validity. This relies solely on sensible defaults, which might not be sufficient for all operational scenarios.
