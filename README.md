@@ -46,12 +46,12 @@ Run the agent from your terminal.
 
 To document the current directory:
 ```bash
-python -m app .
+python -m src .
 ```
 
 To document a specific project path:
 ```bash
-python -m app /path/to/your/project
+python -m src /path/to/your/project
 ```
 
 Once completed, the agent will generate a highly structured GENERATED_README.md file directly in the target directory.
