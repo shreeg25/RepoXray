@@ -201,7 +201,7 @@ st.markdown("""
     border-radius: 4px;
 }
 
-/* Markdown specific fixes to ensure readability over the background */
+/* Markdown Specific Fixes */
 .stMarkdown p, .stMarkdown li {
     font-family: sans-serif !important;
     font-size: 1.05rem !important;
@@ -211,6 +211,11 @@ st.markdown("""
 .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
     color: #00ffea !important;
     font-family: 'Courier New', Courier, monospace !important;
+}
+/* Ensure Mermaid diagrams look okay */
+pre {
+    background-color: #111 !important;
+    border: 1px solid #333 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -288,64 +293,63 @@ if start_scan:
                 code_context = read_codebase(target_dir_abs)
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={current_key}"
                 
-                # UPDATED PROMPT: Strict Markdown & Mermaid rules to prevent rendering crashes
+                # NO MORE JSON! Explicit Markdown Text Instructions with a strict delimiter
                 system_prompt = """You are RepoXray, an elite software architecture and cybersecurity AI. 
 Your task is to analyze the provided codebase and generate two comprehensive documents.
 
-CRITICAL RULES TO PREVENT RENDERING CRASHES:
-1. JSON ONLY: Respond ONLY with a valid JSON object containing EXACTLY two keys: "readme" and "security_audit".
-2. STRICT MARKDOWN: Use ONLY standard Markdown formatting. DO NOT use raw HTML tags (like <ul>, <li>, <code>, <br>). Use *, -, or numbers for lists. Use backticks strictly for code blocks.
-3. MERMAID DIAGRAM RULES: You MUST include a ```mermaid architecture diagram. 
-   - CRITICAL: Node labels MUST NOT contain backticks (`), quotes ("), or brackets ([]) inside the text.
-   - Good Example: A[CLI Entrypoint] --> B[Core Engine]
-   - Bad Example (WILL CRASH): A[`src/main.py`] --> B(Engine)
+CRITICAL FORMATTING RULES:
+1. OUTPUT RAW MARKDOWN ONLY. DO NOT USE JSON. DO NOT WRAP YOUR RESPONSE IN ```json.
+2. DELIMITER: You MUST separate the two documents using EXACTLY this text on its own line:
+===SECURITY_AUDIT_START===
+3. DO NOT USE HTML TAGS (no <ul>, <li>, <code>). Use standard markdown symbols like -, *, #, and `backticks` for inline code.
+4. MERMAID DIAGRAM RULES (CRITICAL):
+   - Start the block with ```mermaid and end with ```
+   - Node labels MUST ONLY contain letters, numbers, and spaces.
+   - FATAL ERROR WARNING: DO NOT use backticks (`), quotes ("), slashes (/), or brackets ([]) inside node text. It will crash the renderer.
+   - GOOD Example: A[CLI Entrypoint] --> B[Core Engine]
+   - BAD Example: A[`src/main.py`] --> B[Engine]
 
-REQUIREMENTS FOR "readme":
-- Cyberpunk-themed professional header.
-- 🎯 PROJECT PURPOSE: What real-world problem does it solve?
-- ✨ CORE FEATURES: DEDUCE THE ACTUAL FUNCTIONALITY. Provide a highly detailed bulleted list.
-- 🛠️ TECH STACK
-- 🏗️ SYSTEM ARCHITECTURE: Mermaid.js diagram (Following the strict rules above).
-- 🚀 SETUP INSTRUCTIONS
+OUTPUT STRUCTURE:
+===README_START===
+# [Project Name]
+[Cyberpunk-themed header]
 
-REQUIREMENTS FOR "security_audit":
-- Executive summary of the security posture.
-- Threat modeling overview.
-- Detailed vulnerability analysis (CWE classifications, Severity, Description, Remediation)."""
+### 🎯 Project Purpose
+...
+### ✨ Core Features
+...
+### 🏗️ System Architecture
+```mermaid
+graph TD
+A[Start] --> B[End]
+```
+...
+
+===SECURITY_AUDIT_START===
+# Security Audit
+...
+"""
 
                 payload = {
                     "systemInstruction": {
                         "parts": [{"text": system_prompt}]
                     },
-                    "contents": [{"parts": [{"text": f"Analyze this codebase and fully populate the JSON response.\n\n{code_context}"}]}],
-                    "generationConfig": {
-                        "responseMimeType": "application/json",
-                        "responseSchema": {
-                            "type": "OBJECT",
-                            "properties": {
-                                "readme": {"type": "STRING"},
-                                "security_audit": {"type": "STRING"}
-                            },
-                            "required": ["readme", "security_audit"]
-                        }
-                    }
+                    "contents": [{"parts": [{"text": f"Analyze this codebase and output the text following the requested structure.\n\n{code_context}"}]}]
+                    # Removed responseMimeType to allow standard text output and proper line breaks
                 }
                 
                 result = fetch_from_gemini(url, payload)
-                json_string = result.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '{}')
+                response_text = result.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
                 
-                json_string = json_string.strip()
-                if json_string.startswith('```json'):
-                    json_string = json_string[7:]
-                elif json_string.startswith('```'):
-                    json_string = json_string[3:]
-                if json_string.endswith('```'):
-                    json_string = json_string[:-3]
-                    
-                parsed_data = json.loads(json_string.strip())
+                # Parse the plain text response using our custom delimiter
+                if "===SECURITY_AUDIT_START===" in response_text:
+                    parts = response_text.split("===SECURITY_AUDIT_START===")
+                    st.session_state.readme_content = parts[0].replace("===README_START===", "").strip()
+                    st.session_state.audit_content = parts[1].strip()
+                else:
+                    st.session_state.readme_content = response_text
+                    st.session_state.audit_content = "# Audit Formatting Error\n\nThe AI failed to separate the documents. The audit might be included at the bottom of the README tab."
                 
-                st.session_state.readme_content = parsed_data.get('readme', 'No README generated.')
-                st.session_state.audit_content = parsed_data.get('security_audit', parsed_data.get('securityAudit', '# Audit failed to generate.'))
                 st.session_state.scan_complete = True
 
         sys.stdout = old_stdout
@@ -363,7 +367,6 @@ REQUIREMENTS FOR "security_audit":
 if st.session_state.scan_complete:
     st.success("✓ PROTOCOL COMPLETE // NEURAL SCAN FINISHED")
     
-    # Restored Action Buttons!
     col_act1, col_act2, col_act3 = st.columns(3)
     
     with col_act1:
@@ -403,7 +406,6 @@ if st.session_state.scan_complete:
     tab1, tab2 = st.tabs(["README.md", "SECURITY_AUDIT.md"])
     
     with tab1:
-        # Added unsafe_allow_html=True as a fail-safe in case the AI still sneaks some HTML through
         st.markdown(st.session_state.readme_content, unsafe_allow_html=True)
         
     with tab2:
