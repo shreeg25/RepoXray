@@ -1,4 +1,4 @@
-google-genai>=0.3.0
+google-generativeai>=0.1.0
 python-dotenv>=1.0.0
 pathspec>=0.11.0
 tenacity>=8.2.0
