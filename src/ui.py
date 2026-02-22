@@ -1,11 +1,31 @@
 import streamlit as st
 import os
 import sys
+import time
+import json
+import urllib.request
+import urllib.error
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 from dotenv import load_dotenv, find_dotenv
+from tenacity import retry, stop_after_attempt, wait_exponential
+import logging
 
 # 1. Force find and load .env from anywhere in the project tree
 load_dotenv(find_dotenv(), override=True)
+
+# Set up basic logging for Tenacity
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- INITIALIZE SESSION STATE ---
+if "readme_content" not in st.session_state:
+    st.session_state.readme_content = ""
+if "audit_content" not in st.session_state:
+    st.session_state.audit_content = ""
+if "scan_complete" not in st.session_state:
+    st.session_state.scan_complete = False
+if "target_dir_abs" not in st.session_state:
+    st.session_state.target_dir_abs = ""
 
 # --- FIX FOR "NoSessionContext" THREADING ERRORS ---
 class StreamlitRedirect:
@@ -24,6 +44,51 @@ class StreamlitRedirect:
     def flush(self):
         pass
 # ----------------------------------------------------------------
+
+# Helper function to read codebase files for the API
+def read_codebase(target_dir, max_files=15):
+    print(f">> SCANNING DIRECTORY: {target_dir}")
+    content = ""
+    count = 0
+    for root, _, files in os.walk(target_dir):
+        for file in files:
+            if count >= max_files:
+                break
+            # Only read common source code extensions to avoid binaries
+            if file.endswith(('.py', '.js', '.ts', '.html', '.css', '.json', '.md', '.tsx', '.jsx')):
+                filepath = os.path.join(root, file)
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        print(f">> INGESTING FILE: {file}")
+                        # Limit to first 2000 chars per file to save context limits
+                        content += f"\n--- {filepath} ---\n{f.read()[:2000]}\n"
+                    count += 1
+                except Exception as e:
+                    print(f">> ERR_READING: {file} ({e})")
+        if count >= max_files:
+            print(">> MAX_FILE_LIMIT_REACHED. HALTING INGESTION.")
+            break
+            
+    if not content:
+        print(">> WARN: NO VALID SOURCE FILES FOUND. PROCEEDING WITH EMPTY CONTEXT.")
+        return "// No readable source code found in directory."
+    return content
+
+# --- TENACITY RETRY LOGIC FOR API CALLS ---
+@retry(
+    stop=stop_after_attempt(4), 
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    reraise=True
+)
+def fetch_from_gemini(url, payload):
+    print(">> TRANSMITTING PACKETS TO NEURAL API (Awaiting Response)...")
+    req = urllib.request.Request(
+        url, 
+        data=json.dumps(payload).encode('utf-8'), 
+        headers={'Content-Type': 'application/json'}
+    )
+    with urllib.request.urlopen(req) as response:
+        return json.loads(response.read().decode('utf-8'))
 
 # Page config
 st.set_page_config(page_title="RepoXray | Terminal", page_icon="💻", layout="wide", initial_sidebar_state="expanded")
@@ -93,13 +158,6 @@ st.markdown("""
     font-weight: bold;
     margin-bottom: 30px;
 }
-.dataset-title {
-    color: #ff00ff;
-    font-size: 1.5rem;
-    font-weight: bold;
-    margin-top: 40px;
-    margin-bottom: 10px;
-}
 
 /* Inputs styling */
 .stTextInput>div>div>input {
@@ -110,10 +168,6 @@ st.markdown("""
     border-radius: 0 !important;
     font-family: 'Courier New', Courier, monospace !important;
     box-shadow: none !important;
-}
-.stTextInput>div>div>input:focus {
-    border-bottom: 2px solid #ff00ff !important;
-    box-shadow: 0 5px 5px -5px #ff00ff !important;
 }
 
 /* Buttons */
@@ -133,6 +187,11 @@ st.markdown("""
     color: #000 !important;
     box-shadow: 0 0 15px #00ffea !important;
 }
+.stDownloadButton>button {
+    background-color: #1a0033 !important;
+    color: #ff00ff !important;
+    border: 1px solid #ff00ff !important;
+}
 
 /* System Logs / Success Box */
 [data-testid="stAlert"] {
@@ -141,26 +200,17 @@ st.markdown("""
     color: #00ff41 !important;
     border-radius: 4px;
 }
-[data-testid="stAlert"] * {
-    color: #00ff41 !important;
-}
 
-/* Tabs */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 10px;
-    border-bottom: 1px solid #333;
+/* Markdown specific fixes to ensure readability over the background */
+.stMarkdown p, .stMarkdown li {
+    font-family: sans-serif !important;
+    font-size: 1.05rem !important;
+    line-height: 1.6;
+    color: #e2e8f0;
 }
-.stTabs [data-baseweb="tab"] {
-    color: #555 !important;
-    font-family: 'Courier New', Courier, monospace;
-    font-weight: bold;
-    font-size: 1rem;
-    background-color: transparent;
-    border: none;
-}
-.stTabs [data-baseweb="tab"][aria-selected="true"] {
+.stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
     color: #00ffea !important;
-    border-bottom: 3px solid #00ffea !important;
+    font-family: 'Courier New', Courier, monospace !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -176,7 +226,6 @@ with st.sidebar:
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Pre-fill placeholder if the key is already found in the .env file
     env_key_exists = bool(os.environ.get("GOOGLE_API_KEY"))
     placeholder_text = "******** (Loaded from .env)" if env_key_exists else "Enter your API Key..."
     api_key_input = st.text_input("AUTH_TOKEN [API_KEY]", type="password", placeholder=placeholder_text)
@@ -193,7 +242,6 @@ st.markdown("<div class='sub-title'>&gt;&gt; NEURAL NETWORK CODEBASE ANALYSIS EN
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Centered Generation Button
 col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
 with col_btn2:
     start_scan = st.button("GENERATE README & SECURITY AUDIT", use_container_width=True)
@@ -201,127 +249,162 @@ with col_btn2:
 st.markdown("<br>", unsafe_allow_html=True)
 
 if start_scan:
-    # 1. Update environment if the user manually typed an API key
     if api_key_input.strip():
         os.environ["GOOGLE_API_KEY"] = api_key_input.strip()
 
-    # 2. Strict Pre-flight Check: Catch missing keys or dummy text
     current_key = os.environ.get("GOOGLE_API_KEY", "").strip()
     dummy_keys = ["", "your_api_key_here", "insert_key_here", "<your_api_key>"]
     
+    is_mock = False
     if not current_key or current_key.lower() in dummy_keys:
-        st.error("❌ ERR_AUTH_FAILURE: GOOGLE_API_KEY is missing or invalid. Please type it in the sidebar.")
-        st.stop() 
+        st.warning("⚠️ AUTH_TOKEN MISSING OR INVALID. FALLING BACK TO MOCK MODE...")
+        is_mock = True
 
-    target_dir_abs = os.path.abspath(target_dir)
+    clean_target_dir = target_dir.strip(' "\'')
+    target_dir_abs = os.path.abspath(clean_target_dir)
+    st.session_state.target_dir_abs = target_dir_abs
     
-    # 3. Pre-flight Check: Ensure Directory Exists
     if not os.path.exists(target_dir_abs):
         st.error(f"❌ ERR_DIR_NOT_FOUND: Path does not exist -> {target_dir_abs}")
         st.stop()
         
-    # UI Elements for terminal logs
     log_expander = st.expander(">> LIVE_TERMINAL_LOGS... (Extracting Context)", expanded=True)
     log_container = log_expander.empty()
     
-    # Intercept print statements safely
     old_stdout = sys.stdout
     sys.stdout = StreamlitRedirect(log_container)
     
     try:
         with st.spinner("BREACHING_MAINFRAME & INITIATING DEEP SCAN... [EST. TIME: 1-3 MINS] ⏳"):
             
-            # DELAYED IMPORT
-            try:
-                from src.agents import ReadmeAgent
-            except ImportError:
-                try:
-                    from app.agents import ReadmeAgent
-                except ImportError:
-                    from agents import ReadmeAgent
-                    
-            agent = ReadmeAgent(target_dir=target_dir_abs)
-            readme_content = agent.generate() 
-            
-        st.success("✓ PROTOCOL COMPLETE // NEURAL SCAN FINISHED")
-        
-        # --- FIX FOR EMPTY PAYLOAD / AGENT AUTO-SAVE ---
-        readme_path = os.path.join(target_dir_abs, "README.md")
-        
-        # If the agent returned nothing, check if it saved the file to disk directly
-        if not readme_content and os.path.exists(readme_path):
-            with open(readme_path, "r", encoding="utf-8") as f:
-                readme_content = f.read()
-
-        # If it's STILL empty, the AI generation actually failed
-        if not readme_content:
-            st.error("❌ ERR_AI_FAILURE: The AI agent returned an empty response.")
-            st.warning("""
-            **Possible Causes:**
-            1. **API Quota Exceeded:** Check your AI provider's dashboard.
-            2. **Context Limit Reached:** Your repository might be too large for the model to process in one go.
-            3. **Content Filter:** The AI refused to answer due to safety tripwires.
-            """)
-            st.stop()
-
-        # --- AUTO-SAVE LOGIC ---
-        try:
-            with open(readme_path, "w", encoding="utf-8") as f:
-                f.write(readme_content)
-            st.info(f"💾 SYSTEM LOG: **README.md** has been successfully saved to: `{readme_path}`")
-        except Exception as e:
-            st.warning(f"⚠️ SYSTEM ALERT: Could not auto-save. Please use the download buttons below. (Error: {e})")
-
-        # Extract Security Audit Payload
-        audit_path = os.path.join(target_dir_abs, "SECURITY_AUDIT.md")
-        audit_content = ""
-        if os.path.exists(audit_path):
-            with open(audit_path, "r", encoding="utf-8") as f:
-                audit_content = f.read()
-            st.info(f"🛡️ SYSTEM LOG: **SECURITY_AUDIT.md** located at: `{audit_path}`")
-
-        # --- RENDER COMPILED DATASET ---
-        st.markdown("<div class='dataset-title'>// COMPILED_DATASET</div>", unsafe_allow_html=True)
-        
-        tab_readme, tab_audit, tab_raw = st.tabs(["[README_VIEW]", "[SECURITY_AUDIT]", "[RAW_MARKDOWN]"])
-        
-        with tab_readme:
-            st.markdown(readme_content)
+            if is_mock:
+                print(">> INITIALIZING OFFLINE MOCK HEURISTICS...")
+                time.sleep(2)
+                st.session_state.readme_content = "# MOCK README\nTest data."
+                st.session_state.audit_content = "# MOCK AUDIT\nTest data."
+                st.session_state.scan_complete = True
                 
-        with tab_audit:
-            if audit_content:
-                st.markdown(audit_content)
             else:
-                st.warning("WARN: NO_SECURITY_VULNERABILITIES_LOGGED OR FILE MISSING")
+                code_context = read_codebase(target_dir_abs)
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={current_key}"
                 
-        with tab_raw:
-            st.code(readme_content, language="markdown")
+                # UPDATED PROMPT: Strict Markdown & Mermaid rules to prevent rendering crashes
+                system_prompt = """You are RepoXray, an elite software architecture and cybersecurity AI. 
+Your task is to analyze the provided codebase and generate two comprehensive documents.
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Action Buttons Row
-        st.markdown("<p style='color: #00ffea;'>Manual File Controls:</p>", unsafe_allow_html=True)
-        d_col1, d_col2 = st.columns(2)
-        with d_col1:
-            st.download_button(
-                label="DOWNLOAD // BACKUP.MD", 
-                data=readme_content, 
-                file_name="GENERATED_README.md", 
-                mime="text/markdown",
-                use_container_width=True
-            )
-        with d_col2:
-            st.download_button(
-                label="FORCE OVERWRITE DOWNLOAD // README.MD", 
-                data=readme_content, 
-                file_name="README.md", 
-                mime="text/markdown",
-                use_container_width=True
-            )
+CRITICAL RULES TO PREVENT RENDERING CRASHES:
+1. JSON ONLY: Respond ONLY with a valid JSON object containing EXACTLY two keys: "readme" and "security_audit".
+2. STRICT MARKDOWN: Use ONLY standard Markdown formatting. DO NOT use raw HTML tags (like <ul>, <li>, <code>, <br>). Use *, -, or numbers for lists. Use backticks strictly for code blocks.
+3. MERMAID DIAGRAM RULES: You MUST include a ```mermaid architecture diagram. 
+   - CRITICAL: Node labels MUST NOT contain backticks (`), quotes ("), or brackets ([]) inside the text.
+   - Good Example: A[CLI Entrypoint] --> B[Core Engine]
+   - Bad Example (WILL CRASH): A[`src/main.py`] --> B(Engine)
 
-    except Exception as e:
-        st.error(f"💥 SYSTEM_CRASH_DETECTED: {e}")
-    finally:
-        # Restore stdout to prevent memory leaks or system issues
+REQUIREMENTS FOR "readme":
+- Cyberpunk-themed professional header.
+- 🎯 PROJECT PURPOSE: What real-world problem does it solve?
+- ✨ CORE FEATURES: DEDUCE THE ACTUAL FUNCTIONALITY. Provide a highly detailed bulleted list.
+- 🛠️ TECH STACK
+- 🏗️ SYSTEM ARCHITECTURE: Mermaid.js diagram (Following the strict rules above).
+- 🚀 SETUP INSTRUCTIONS
+
+REQUIREMENTS FOR "security_audit":
+- Executive summary of the security posture.
+- Threat modeling overview.
+- Detailed vulnerability analysis (CWE classifications, Severity, Description, Remediation)."""
+
+                payload = {
+                    "systemInstruction": {
+                        "parts": [{"text": system_prompt}]
+                    },
+                    "contents": [{"parts": [{"text": f"Analyze this codebase and fully populate the JSON response.\n\n{code_context}"}]}],
+                    "generationConfig": {
+                        "responseMimeType": "application/json",
+                        "responseSchema": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "readme": {"type": "STRING"},
+                                "security_audit": {"type": "STRING"}
+                            },
+                            "required": ["readme", "security_audit"]
+                        }
+                    }
+                }
+                
+                result = fetch_from_gemini(url, payload)
+                json_string = result.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '{}')
+                
+                json_string = json_string.strip()
+                if json_string.startswith('```json'):
+                    json_string = json_string[7:]
+                elif json_string.startswith('```'):
+                    json_string = json_string[3:]
+                if json_string.endswith('```'):
+                    json_string = json_string[:-3]
+                    
+                parsed_data = json.loads(json_string.strip())
+                
+                st.session_state.readme_content = parsed_data.get('readme', 'No README generated.')
+                st.session_state.audit_content = parsed_data.get('security_audit', parsed_data.get('securityAudit', '# Audit failed to generate.'))
+                st.session_state.scan_complete = True
+
         sys.stdout = old_stdout
-        log_expander.expanded = False # Auto collapse when finished
+        
+    except Exception as e:
+        sys.stdout = old_stdout
+        st.error(f"💥 SYSTEM_CRASH_DETECTED: {e}")
+        st.session_state.scan_complete = False
+    finally:
+        sys.stdout = old_stdout
+        log_expander.expanded = False
+
+
+# --- RENDER RESULTS & ACTION BUTTONS ---
+if st.session_state.scan_complete:
+    st.success("✓ PROTOCOL COMPLETE // NEURAL SCAN FINISHED")
+    
+    # Restored Action Buttons!
+    col_act1, col_act2, col_act3 = st.columns(3)
+    
+    with col_act1:
+        st.download_button(
+            label="⬇️ DOWNLOAD README.md",
+            data=st.session_state.readme_content,
+            file_name="README.md",
+            mime="text/markdown",
+            use_container_width=True
+        )
+        
+    with col_act2:
+        st.download_button(
+            label="⬇️ DOWNLOAD SECURITY_AUDIT.md",
+            data=st.session_state.audit_content,
+            file_name="SECURITY_AUDIT.md",
+            mime="text/markdown",
+            use_container_width=True
+        )
+        
+    with col_act3:
+        if st.button("💾 OVERWRITE LOCAL FILES", use_container_width=True):
+            try:
+                readme_path = os.path.join(st.session_state.target_dir_abs, "README.md")
+                audit_path = os.path.join(st.session_state.target_dir_abs, "SECURITY_AUDIT.md")
+                with open(readme_path, "w", encoding="utf-8") as f:
+                    f.write(st.session_state.readme_content)
+                with open(audit_path, "w", encoding="utf-8") as f:
+                    f.write(st.session_state.audit_content)
+                st.success(f"Files written directly to `{st.session_state.target_dir_abs}`!")
+            except Exception as e:
+                st.error(f"Failed to overwrite files: {e}")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- TABS FOR VIEWING ---
+    tab1, tab2 = st.tabs(["README.md", "SECURITY_AUDIT.md"])
+    
+    with tab1:
+        # Added unsafe_allow_html=True as a fail-safe in case the AI still sneaks some HTML through
+        st.markdown(st.session_state.readme_content, unsafe_allow_html=True)
+        
+    with tab2:
+        st.markdown(st.session_state.audit_content, unsafe_allow_html=True)

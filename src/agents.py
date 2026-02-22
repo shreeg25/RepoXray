@@ -154,6 +154,10 @@ class ReadmeAgent:
         CRITICAL FORMATTING RULES:
         - Use double newlines between paragraphs and sections.
         - ALWAYS properly close your code blocks with triple backticks (```).
+        CRITICAL DIAGRAM RULES:
+        When generating Mermaid.js diagrams, DO NOT use backticks (`), bolding (**), or any markdown formatting inside the node labels or connection strings. Use plain text only.
+        WRONG: A["`src/main.py`"] --> B{"**Router**"}
+        RIGHT: A["src/main.py"] --> B{"Router"}
         
         Sections:
         1. **Title & Description**: Catchy title and purpose.
