@@ -180,7 +180,8 @@ Include sections: Overview, Feature Set, Architecture Diagram (using Mermaid.js)
 STRICT MERMAID RULES:
 - MUST include a ```mermaid code block showing the system architecture.
 - EVERY SINGLE NODE MAPPING MUST BE ON A NEW LINE.
-- Use simple syntax: `A[Node Name] --> B[Node Name]`.
+- ALWAYS wrap node labels in double quotes to prevent syntax errors: `A["Node Name"] --> B["Node Name"]`.
+- NEVER use parentheses () inside node names without double quotes, as it breaks the parser.
 - NEVER use dashed lines (--- or --) for comments or separators INSIDE the Mermaid block.
 
 Use Markdown only. Do not use HTML tags. Be concise but descriptive."""

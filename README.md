@@ -21,27 +21,27 @@ RepoXray streamlines the documentation and security review process for developer
 
 ```mermaid
 graph LR
-    User[User] --> Entrypoint{CLI or Streamlit UI};
+    User["User"] --> Entrypoint{"CLI or Streamlit UI"};
 
-    Entrypoint --> Config[Configuration (src/config.py)];
-    Config --> Env[.env (API Key)];
+    Entrypoint --> Config["Configuration (src/config.py)"];
+    Config --> Env[".env (API Key)"];
 
-    Entrypoint --> Agent[ReadmeAgent (src/agents.py)];
+    Entrypoint --> Agent["ReadmeAgent (src/agents.py)"];
 
-    Agent --> Reader[ProjectReader (src/tools.py)];
-    Reader --> Codebase[Target Codebase];
+    Agent --> Reader["ProjectReader (src/tools.py)"];
+    Reader --> Codebase["Target Codebase"];
     Codebase --> Reader;
 
     Reader --> Agent;
 
-    Agent --> GeminiMap[Google Gemini API (Map Model)];
+    Agent --> GeminiMap["Google Gemini API (Map Model)"];
     GeminiMap --> Agent;
 
-    Agent --> GeminiReduce[Google Gemini API (Reduce Model)];
+    Agent --> GeminiReduce["Google Gemini API (Reduce Model)"];
     GeminiReduce --> Agent;
 
-    Agent --> OutputReadme[Generated README.md];
-    Agent --> OutputAudit[Generated SECURITY_AUDIT.md];
+    Agent --> OutputReadme["Generated README.md"];
+    Agent --> OutputAudit["Generated SECURITY_AUDIT.md"];
 ```
 
 ## Project Structure
@@ -49,15 +49,15 @@ graph LR
 ```
 .
 ├── .env.example             # Example file for environment variables
-├── docker.compose.yaml      # Docker Compose configuration (if applicable)
+├── docker.compose.yaml      # Docker Compose configuration for containerized deployment
 ├── README.md                # This documentation file
-├── SECURITY_AUDIT.md        # Self-assessment security audit report
+├── SECURITY_AUDIT.md        # Self-assessment security audit report (generated)
 └── src/                     # Source code directory
     ├── __init__.py          # Python package initializer
     ├── __main__.py          # CLI entry point for the application
     ├── agents.py            # Core logic for AI agents (ReadmeAgent)
     ├── config.py            # Centralized configuration management
-    ├── file_reader.py       # (Alternative/older) File reading utility
+    ├── file_reader.py       # (Legacy/Alternative) File reading utility
     ├── tools.py             # Primary file reading, filtering, and folder tree generation
     └── ui.py                # Streamlit web application interface
 ```
@@ -70,81 +70,76 @@ graph LR
 *   **Robustness**: `tenacity` (for API call retries)
 *   **Configuration**: `python-dotenv` (for environment variable management)
 *   **Web UI**: `streamlit`
-*   **Concurrency**: `concurrent.futures` (for multi-threading)
+*   **Concurrency**: `concurrent.futures` (for multi-threaded file processing)
 
 ## Setup
 
 Follow these steps to get RepoXray up and running on your local machine.
 
-### 1. Clone the Repository
+### Prerequisites
+
+*   Python 3.8+
+*   A Google Cloud Project with the Gemini API enabled.
+*   A Google API Key for the Gemini API.
+
+### Installation
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/RepoXray.git
+    cd RepoXray
+    ```
+
+2.  **Create a virtual environment (recommended):**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows: `venv\Scripts\activate`
+    ```
+
+3.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+    *(Note: A `requirements.txt` file is not provided in the context, but would typically contain: `google-generativeai`, `python-dotenv`, `tenacity`, `streamlit`)*
+
+4.  **Configure your Google API Key:**
+    *   Rename `.env.example` to `.env`.
+    *   Open `.env` and replace `YOUR_GOOGLE_API_KEY` with your actual Google Gemini API key.
+    ```ini
+    GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
+    # Optional: Configure specific Gemini models
+    # MAP_MODEL="gemini-2.5-flash"
+    # REDUCE_MODEL="gemini-2.5-flash"
+    ```
+
+### Usage
+
+#### Command-Line Interface (CLI)
+
+To generate documentation and security audits for a codebase from your terminal:
 
 ```bash
-git clone https://github.com/your-username/RepoXray.git
-cd RepoXray
+python -m src [target_directory]
 ```
 
-### 2. Create and Activate a Virtual Environment
+*   Replace `[target_directory]` with the path to the codebase you want to analyze.
+*   If `[target_directory]` is omitted, the current directory (`.`) will be used.
 
-It's recommended to use a virtual environment to manage dependencies.
-
+**Example:**
 ```bash
-python -m venv venv
-# On Windows
-.\venv\Scripts\activate
-# On macOS/Linux
-source venv/bin/activate
+python -m src .
 ```
+This will generate `README.md` and `SECURITY_AUDIT.md` in the current working directory.
 
-### 3. Install Dependencies
+#### Streamlit Web Application
 
-Install all required Python packages:
+For an interactive web interface:
 
-```bash
-pip install -r requirements.txt
-# (Note: A requirements.txt is assumed. If not present, you'd install individually:
-# pip install google-generativeai python-dotenv tenacity streamlit)
-```
+1.  **Run the Streamlit application:**
+    ```bash
+    streamlit run src/ui.py
+    ```
 
-### 4. Configure Google API Key
-
-Obtain a Google Gemini API key from the [Google AI Studio](https://aistudio.google.com/app/apikey).
-
-Create a `.env` file in the root directory of the project (next to `README.md`) and add your API key:
-
-```dotenv
-GOOGLE_API_KEY="YOUR_GEMINI_API_KEY_HERE"
-MAP_MODEL="gemini-2.5-flash" # Optional: Override default map model
-REDUCE_MODEL="gemini-2.5-flash" # Optional: Override default reduce model
-```
-
-**Security Note**: Ensure your `.env` file is included in your `.gitignore` to prevent accidental exposure of your API key.
-
-### 5. Run RepoXray
-
-You can run RepoXray using either the Command-Line Interface (CLI) or the Streamlit Web UI.
-
-#### A. Command-Line Interface (CLI)
-
-To generate documentation and audit reports for a target directory:
-
-```bash
-python -m src [target_directory_path]
-```
-
-*   Replace `[target_directory_path]` with the path to the codebase you want to analyze.
-*   If `[target_directory_path]` is omitted, it defaults to the current directory (`.`).
-
-**Example**:
-```bash
-python -m src ../my_project
-```
-
-#### B. Streamlit Web UI
-
-To launch the interactive web application:
-
-```bash
-streamlit run src/ui.py
-```
-
-This will open a new tab in your web browser with the RepoXray UI, where you can input the target directory and initiate the analysis.
+2.  **Access the UI:**
+    Open your web browser and navigate to the URL provided by Streamlit (usually `http://localhost:8501`).
+    You can then input the target directory path directly in the web interface to initiate the scan.
