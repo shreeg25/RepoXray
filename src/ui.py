@@ -1,265 +1,327 @@
 import streamlit as st
 import os
-import time
+import sys
+from streamlit.runtime.scriptrunner import get_script_run_ctx
+from dotenv import load_dotenv, find_dotenv
 
-# --- AUTO-DARK THEME ENFORCER ---
-def enforce_dark_theme():
-    """Creates a .streamlit/config.toml file dynamically to force dark mode."""
-    os.makedirs(".streamlit", exist_ok=True)
-    config_path = ".streamlit/config.toml"
-    
-    theme_config = """
-[theme]
-base="dark"
-primaryColor="#ff00ff"
-backgroundColor="#050508"
-secondaryBackgroundColor="#0a0a10"
-textColor="#e0e0e0"
-font="monospace"
-"""
-    needs_update = False
-    if not os.path.exists(config_path):
-        needs_update = True
-    else:
-        with open(config_path, "r") as f:
-            if 'base="dark"' not in f.read():
-                needs_update = True
-                
-    if needs_update:
-        with open(config_path, "w") as f:
-            f.write(theme_config)
-        return True
-    return False
+# 1. Force find and load .env from anywhere in the project tree
+load_dotenv(find_dotenv(), override=True)
 
-# Attempt to import your ReadmeAgent. 
-try:
-    from src.agents import ReadmeAgent
-except ImportError:
-    try:
-        from agents import ReadmeAgent
-    except ImportError:
-        st.error("SYSTEM FAILURE: Could not import ReadmeAgent.")
+# --- FIX FOR "NoSessionContext" THREADING ERRORS ---
+class StreamlitRedirect:
+    def __init__(self, st_empty_block):
+        self.st_empty_block = st_empty_block
+        self.buffer = []
 
-# --- UI Configuration ---
-st.set_page_config(
-    page_title="SYS.OP // REPO_XRAY",
-    page_icon="⚡",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+    def write(self, msg):
+        if msg.strip():
+            self.buffer.append(msg.strip())
+            # ONLY update UI if called from the main Streamlit thread
+            if get_script_run_ctx() is not None:
+                display_text = "\n".join(self.buffer[-15:])
+                self.st_empty_block.code(display_text, language="bash")
 
-# Force a reload immediately if the dark theme config was just created
-if enforce_dark_theme():
-    if hasattr(st, "rerun"):
-        st.rerun()
-    else:
-        st.experimental_rerun()
+    def flush(self):
+        pass
+# ----------------------------------------------------------------
 
-# --- CYBERPUNK CSS OVERRIDE ---
+# Page config
+st.set_page_config(page_title="RepoXray | Terminal", page_icon="💻", layout="wide", initial_sidebar_state="expanded")
+
+# --- CYBERPUNK THEME CSS INJECTION ---
 st.markdown("""
 <style>
-    /* Global Background and Text */
-    .stApp {
-        background-color: #050508;
-        background-image: 
-            linear-gradient(rgba(0, 255, 204, 0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0, 255, 204, 0.03) 1px, transparent 1px);
-        background-size: 30px 30px;
-        color: #e0e0e0;
-        font-family: 'Courier New', Courier, monospace;
-    }
+/* Base Dark Theme & Grid */
+.stApp {
+    background-color: #050505;
+    background-image: 
+        linear-gradient(rgba(0, 255, 234, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 234, 0.03) 1px, transparent 1px);
+    background-size: 30px 30px;
+    color: #ffffff;
+    font-family: 'Courier New', Courier, monospace;
+}
 
-    /* Headers */
-    .cyber-header {
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 3rem;
-        font-weight: 900;
-        color: #fff;
-        text-transform: uppercase;
-        letter-spacing: 4px;
-        margin-bottom: 0;
-        text-shadow: 0 0 5px #00ffcc, 0 0 15px #00ffcc, 0 0 30px #00ffcc;
-        border-bottom: 2px solid #ff00ff;
-        padding-bottom: 10px;
-    }
-    .cyber-subheader {
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 1rem;
-        color: #ff00ff;
-        margin-top: 5px;
-        margin-bottom: 2rem;
-        letter-spacing: 2px;
-        text-shadow: 0 0 5px rgba(255, 0, 255, 0.5);
-    }
+/* Sidebar Styling */
+[data-testid="stSidebar"] {
+    background-color: #08080a !important;
+    border-right: 2px solid #ff00ff;
+}
+.sidebar-title {
+    color: #00ffea;
+    font-weight: 900;
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    text-shadow: 0 0 5px rgba(0,255,234,0.5);
+}
+.sidebar-subtitle {
+    color: #4a5568;
+    font-size: 0.8rem;
+    background-color: #1a202c;
+    padding: 4px;
+    border-radius: 2px;
+    margin-bottom: 2rem;
+}
+.sys-badge {
+    color: #00ff41;
+    font-size: 0.8rem;
+    background-color: #002200;
+    padding: 4px 8px;
+    border: 1px solid #00ff41;
+    margin-bottom: 10px;
+    display: inline-block;
+}
 
-    /* Sidebar Customization */
-    [data-testid="stSidebar"] {
-        background-color: #0a0a10 !important;
-        border-right: 1px solid #ff00ff;
-        box-shadow: 5px 0 15px rgba(255, 0, 255, 0.1);
-    }
-    
-    /* Input Fields */
-    .stTextInput > div > div > input {
-        background-color: #000000 !important;
-        color: #00ffcc !important;
-        border: 1px solid #333 !important;
-        border-bottom: 2px solid #00ffcc !important;
-        border-radius: 0px !important;
-        font-family: monospace;
-    }
-    .stTextInput > div > div > input:focus {
-        border-color: #ff00ff !important;
-        box-shadow: 0 4px 10px rgba(255, 0, 255, 0.2) !important;
-    }
+/* Main Headers & Accents */
+.main-title {
+    color: #00ffea !important;
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px rgba(0,255,234,0.6);
+    margin-bottom: 5px;
+}
+.magenta-line {
+    height: 2px;
+    background-color: #ff00ff;
+    width: 100%;
+    margin-bottom: 15px;
+    box-shadow: 0 0 10px #ff00ff;
+}
+.sub-title {
+    color: #ff00ff;
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-bottom: 30px;
+}
+.dataset-title {
+    color: #ff00ff;
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-top: 40px;
+    margin-bottom: 10px;
+}
 
-    /* Primary Buttons */
-    .stButton > button {
-        background-color: #050508 !important;
-        border: 1px solid #00ffcc !important;
-        color: #00ffcc !important;
-        border-radius: 0px !important;
-        font-family: monospace;
-        font-weight: bold;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        width: 100%;
-        box-shadow: 0 0 10px rgba(0, 255, 204, 0.2) !important;
-        transition: all 0.2s ease-in-out;
-    }
-    .stButton > button:hover {
-        background-color: #00ffcc !important;
-        color: #000 !important;
-        box-shadow: 0 0 20px rgba(0, 255, 204, 0.6) !important;
-        border-color: #fff !important;
-    }
+/* Inputs styling */
+.stTextInput>div>div>input {
+    background-color: transparent !important;
+    color: #00ffea !important;
+    border: none !important;
+    border-bottom: 2px solid #00ffea !important;
+    border-radius: 0 !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    box-shadow: none !important;
+}
+.stTextInput>div>div>input:focus {
+    border-bottom: 2px solid #ff00ff !important;
+    box-shadow: 0 5px 5px -5px #ff00ff !important;
+}
 
-    /* Data/Status Containers */
-    [data-testid="stStatusWidget"] {
-        background-color: #000 !important;
-        border: 1px solid #ff00ff !important;
-        border-radius: 0px !important;
-        color: #fff !important;
-    }
-    
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        background-color: #050508;
-        border-bottom: 1px solid #333;
-    }
-    .stTabs [data-baseweb="tab"] {
-        color: #666;
-        border-radius: 0px;
-        font-family: monospace;
-        text-transform: uppercase;
-    }
-    .stTabs [aria-selected="true"] {
-        color: #00ffcc !important;
-        border-bottom: 2px solid #00ffcc !important;
-        text-shadow: 0 0 8px rgba(0, 255, 204, 0.5);
-    }
+/* Buttons */
+.stButton>button {
+    background-color: transparent !important;
+    color: #00ffea !important;
+    border: 1px solid #00ffea !important;
+    box-shadow: 0 0 5px rgba(0,255,234,0.2) !important;
+    text-transform: uppercase !important;
+    font-weight: bold !important;
+    letter-spacing: 1px !important;
+    transition: all 0.3s ease !important;
+    border-radius: 2px !important;
+}
+.stButton>button:hover {
+    background-color: #00ffea !important;
+    color: #000 !important;
+    box-shadow: 0 0 15px #00ffea !important;
+}
 
-    /* Dividers */
-    hr {
-        border-color: #333 !important;
-    }
+/* System Logs / Success Box */
+[data-testid="stAlert"] {
+    background-color: #002200 !important;
+    border: 1px solid #00ff41 !important;
+    color: #00ff41 !important;
+    border-radius: 4px;
+}
+[data-testid="stAlert"] * {
+    color: #00ff41 !important;
+}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 10px;
+    border-bottom: 1px solid #333;
+}
+.stTabs [data-baseweb="tab"] {
+    color: #555 !important;
+    font-family: 'Courier New', Courier, monospace;
+    font-weight: bold;
+    font-size: 1rem;
+    background-color: transparent;
+    border: none;
+}
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    color: #00ffea !important;
+    border-bottom: 3px solid #00ffea !important;
+}
 </style>
 """, unsafe_allow_html=True)
+# -------------------------------------
 
-# --- Sidebar (Command Line Interface) ---
+# --- SIDEBAR: TERMINAL ACCESS ---
 with st.sidebar:
-    st.markdown("<h2 style='color: #00ffcc; font-family: monospace;'>TERMINAL_ACCESS</h2>", unsafe_allow_html=True)
-    st.write("`AWAITING CONFIGURATION PARAMS...`")
+    st.markdown("<div class='sidebar-title'>TERMINAL_ACCESS</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-subtitle'>AWAITING CONFIGURATION PARAMS...</div>", unsafe_allow_html=True)
     
-    st.divider()
+    st.markdown("<br>", unsafe_allow_html=True)
+    target_dir = st.text_input("TARGET_DIR [PATH]", value=".")
     
-    target_directory = st.text_input(
-        "TARGET_DIR [PATH]", 
-        value=".", 
-        help="Absolute or relative path to target node."
-    )
+    st.markdown("<br>", unsafe_allow_html=True)
     
-    api_key_override = st.text_input(
-        "AUTH_TOKEN [API_KEY]", 
-        type="password", 
-        help="Override default environment authentication token."
-    )
+    # Pre-fill placeholder if the key is already found in the .env file
+    env_key_exists = bool(os.environ.get("GOOGLE_API_KEY"))
+    placeholder_text = "******** (Loaded from .env)" if env_key_exists else "Enter your API Key..."
+    api_key_input = st.text_input("AUTH_TOKEN [API_KEY]", type="password", placeholder=placeholder_text)
     
-    st.divider()
-    st.markdown("`<SYS_ID: EPOCH_X_NASIKO>`", unsafe_allow_html=True)
-    st.markdown("`<STATUS: ONLINE>`", unsafe_allow_html=True)
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    st.markdown("<div class='sys-badge'>&lt;SYS_ID: EPOCH_X_NASIKO&gt;</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sys-badge'>&lt;STATUS: ONLINE&gt;</div>", unsafe_allow_html=True)
 
-# --- Main Canvas ---
-st.markdown('<p class="cyber-header">REPO_XRAY // ORCHESTRATOR</p>', unsafe_allow_html=True)
-st.markdown('<p class="cyber-subheader">>> NEURAL NETWORK CODEBASE ANALYSIS ENGAGED</p>', unsafe_allow_html=True)
 
-# Container for the generate button
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    generate_btn = st.button("EXECUTE // MAP_REDUCE SEQUENCE")
+# --- MAIN ORCHESTRATOR ---
+st.markdown("<div class='main-title'>REPO_XRAY // ORCHESTRATOR</div>", unsafe_allow_html=True)
+st.markdown("<div class='magenta-line'></div>", unsafe_allow_html=True)
+st.markdown("<div class='sub-title'>&gt;&gt; NEURAL NETWORK CODEBASE ANALYSIS ENGAGED</div>", unsafe_allow_html=True)
 
-# --- Execution Logic ---
-if generate_btn:
-    abs_path = os.path.abspath(target_directory)
-    if not os.path.exists(abs_path):
-        st.error(f"FATAL ERROR: PATH_NOT_FOUND -> '{abs_path}'")
+st.markdown("<br>", unsafe_allow_html=True)
+
+# Centered Generation Button
+col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+with col_btn2:
+    start_scan = st.button("GENERATE README & SECURITY AUDIT", use_container_width=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+if start_scan:
+    # 1. Update environment if the user manually typed an API key
+    if api_key_input.strip():
+        os.environ["GOOGLE_API_KEY"] = api_key_input.strip()
+
+    # 2. Strict Pre-flight Check: Catch missing keys or dummy text
+    current_key = os.environ.get("GOOGLE_API_KEY", "").strip()
+    dummy_keys = ["", "your_api_key_here", "insert_key_here", "<your_api_key>"]
+    
+    if not current_key or current_key.lower() in dummy_keys:
+        st.error("❌ ERR_AUTH_FAILURE: GOOGLE_API_KEY is missing or invalid. Please type it in the sidebar.")
+        st.stop() 
+
+    target_dir_abs = os.path.abspath(target_dir)
+    
+    # 3. Pre-flight Check: Ensure Directory Exists
+    if not os.path.exists(target_dir_abs):
+        st.error(f"❌ ERR_DIR_NOT_FOUND: Path does not exist -> {target_dir_abs}")
         st.stop()
         
-    if not os.path.isdir(abs_path):
-        st.error(f"FATAL ERROR: INVALID_NODE_TYPE -> '{abs_path}' IS FILE, EXPECTED DIR")
-        st.stop()
-
-    with st.status("INITIALIZING_PROTOCOL...", expanded=True) as status:
-        try:
-            st.write(f"> MOUNTING DIRECTORY: `{abs_path}`")
-            time.sleep(0.5)
+    # UI Elements for terminal logs
+    log_expander = st.expander(">> LIVE_TERMINAL_LOGS... (Extracting Context)", expanded=True)
+    log_container = log_expander.empty()
+    
+    # Intercept print statements safely
+    old_stdout = sys.stdout
+    sys.stdout = StreamlitRedirect(log_container)
+    
+    try:
+        with st.spinner("BREACHING_MAINFRAME & INITIATING DEEP SCAN... [EST. TIME: 1-3 MINS] ⏳"):
             
-            if api_key_override:
-                st.write("> OVERRIDING DEFAULT AUTH_TOKEN...")
-                os.environ["GOOGLE_API_KEY"] = api_key_override
-                os.environ["OPENAI_API_KEY"] = api_key_override
-            
-            st.write("> ENGAGING LLM CORES...")
-            
+            # DELAYED IMPORT
             try:
-                agent = ReadmeAgent(target_dir=abs_path) 
-            except TypeError:
-                agent = ReadmeAgent(api_key=os.environ.get("OPENAI_API_KEY", ""), target_dir=abs_path)
+                from src.agents import ReadmeAgent
+            except ImportError:
+                try:
+                    from app.agents import ReadmeAgent
+                except ImportError:
+                    from agents import ReadmeAgent
+                    
+            agent = ReadmeAgent(target_dir=target_dir_abs)
+            readme_content = agent.generate() 
             
-            st.write("> INITIATING [MAP] PHASE: MULTI-THREADED SCANNING...")
-            st.write("> INITIATING [REDUCE] PHASE: DATA SYNTHESIS...")
-            
-            if hasattr(agent, "generate"):
-                final_markdown = agent.generate()
-            else:
-                final_markdown = agent.generate_readme()
+        st.success("✓ PROTOCOL COMPLETE // NEURAL SCAN FINISHED")
+        
+        # --- FIX FOR EMPTY PAYLOAD / AGENT AUTO-SAVE ---
+        readme_path = os.path.join(target_dir_abs, "README.md")
+        
+        # If the agent returned nothing, check if it saved the file to disk directly
+        if not readme_content and os.path.exists(readme_path):
+            with open(readme_path, "r", encoding="utf-8") as f:
+                readme_content = f.read()
 
-            status.update(label="PROTOCOL COMPLETE // DOCUMENTATION GENERATED", state="complete", expanded=False)
-            
-            st.session_state['generated_readme'] = final_markdown
-
-        except Exception as e:
-            status.update(label="CRITICAL FAILURE IN SEQUENCE", state="error", expanded=True)
-            st.error(f"SYS_EXCEPTION: {str(e)}")
+        # If it's STILL empty, the AI generation actually failed
+        if not readme_content:
+            st.error("❌ ERR_AI_FAILURE: The AI agent returned an empty response.")
+            st.warning("""
+            **Possible Causes:**
+            1. **API Quota Exceeded:** Check your AI provider's dashboard.
+            2. **Context Limit Reached:** Your repository might be too large for the model to process in one go.
+            3. **Content Filter:** The AI refused to answer due to safety tripwires.
+            """)
             st.stop()
 
-# --- Display Results ---
-if 'generated_readme' in st.session_state:
-    st.divider()
-    st.markdown("<h3 style='color: #ff00ff; font-family: monospace; letter-spacing: 2px;'>// COMPILED_DATASET</h3>", unsafe_allow_html=True)
-    
-    tab1, tab2 = st.tabs(["[RENDERED_VIEW]", "[RAW_MARKDOWN]"])
-    
-    with tab1:
-        st.markdown(st.session_state['generated_readme'])
+        # --- AUTO-SAVE LOGIC ---
+        try:
+            with open(readme_path, "w", encoding="utf-8") as f:
+                f.write(readme_content)
+            st.info(f"💾 SYSTEM LOG: **README.md** has been successfully saved to: `{readme_path}`")
+        except Exception as e:
+            st.warning(f"⚠️ SYSTEM ALERT: Could not auto-save. Please use the download buttons below. (Error: {e})")
+
+        # Extract Security Audit Payload
+        audit_path = os.path.join(target_dir_abs, "SECURITY_AUDIT.md")
+        audit_content = ""
+        if os.path.exists(audit_path):
+            with open(audit_path, "r", encoding="utf-8") as f:
+                audit_content = f.read()
+            st.info(f"🛡️ SYSTEM LOG: **SECURITY_AUDIT.md** located at: `{audit_path}`")
+
+        # --- RENDER COMPILED DATASET ---
+        st.markdown("<div class='dataset-title'>// COMPILED_DATASET</div>", unsafe_allow_html=True)
         
-    with tab2:
-        st.code(st.session_state['generated_readme'], language="markdown")
+        tab_readme, tab_audit, tab_raw = st.tabs(["[README_VIEW]", "[SECURITY_AUDIT]", "[RAW_MARKDOWN]"])
         
-    st.write("") # Spacing
-    st.download_button(
-        label="DOWNLOAD // README.MD",
-        data=st.session_state['generated_readme'],
-        file_name="GENERATED_README.md",
-        mime="text/markdown"
-    )
+        with tab_readme:
+            st.markdown(readme_content)
+                
+        with tab_audit:
+            if audit_content:
+                st.markdown(audit_content)
+            else:
+                st.warning("WARN: NO_SECURITY_VULNERABILITIES_LOGGED OR FILE MISSING")
+                
+        with tab_raw:
+            st.code(readme_content, language="markdown")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Action Buttons Row
+        st.markdown("<p style='color: #00ffea;'>Manual File Controls:</p>", unsafe_allow_html=True)
+        d_col1, d_col2 = st.columns(2)
+        with d_col1:
+            st.download_button(
+                label="DOWNLOAD // BACKUP.MD", 
+                data=readme_content, 
+                file_name="GENERATED_README.md", 
+                mime="text/markdown",
+                use_container_width=True
+            )
+        with d_col2:
+            st.download_button(
+                label="FORCE OVERWRITE DOWNLOAD // README.MD", 
+                data=readme_content, 
+                file_name="README.md", 
+                mime="text/markdown",
+                use_container_width=True
+            )
+
+    except Exception as e:
+        st.error(f"💥 SYSTEM_CRASH_DETECTED: {e}")
+    finally:
+        # Restore stdout to prevent memory leaks or system issues
+        sys.stdout = old_stdout
+        log_expander.expanded = False # Auto collapse when finished
