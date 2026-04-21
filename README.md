@@ -86,7 +86,7 @@ Follow these steps to get RepoXray up and running on your local machine.
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/RepoXray.git
+    git clone https://github.com/shreeg25pip/RepoXray.git
     cd RepoXray
     ```
 
